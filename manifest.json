@@ -1,0 +1,24 @@
+{
+    "manifest_version": 3,
+    "name": "GitHub PR Diff for LLM",
+    "version": "1.0",
+    "description": "Copy GitHub PR diffs formatted for LLM consumption",
+    "permissions": [
+      "activeTab",
+      "clipboardWrite"
+    ],
+    "content_scripts": [
+      {
+        "matches": [
+          "https://github.com/*/pull/*"
+        ],
+        "js": ["content.js"],
+        "css": ["styles.css"]
+      }
+    ],
+    "icons": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }

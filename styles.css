@@ -1,0 +1,84 @@
+/* Styles for GitHub PR Diff LLM Extension */
+
+.llm-diff-button {
+    /* Match GitHub's button styling */
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: pointer;
+    border: 1px solid rgba(31, 35, 40, 0.15);
+    border-radius: 6px;
+    background-color: #f6f8fa;
+    color: #24292f;
+    text-decoration: none;
+    transition: background-color 0.2s cubic-bezier(0.3, 0, 0.5, 1),
+                border-color 0.2s cubic-bezier(0.3, 0, 0.5, 1),
+                color 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+  }
+  
+  .llm-diff-button:hover {
+    background-color: #f3f4f6;
+    border-color: rgba(31, 35, 40, 0.25);
+    text-decoration: none;
+  }
+  
+  .llm-diff-button:active {
+    background-color: #f0f0f0;
+    border-color: rgba(31, 35, 40, 0.35);
+  }
+  
+  .llm-diff-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .llm-diff-button svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+  }
+  
+  .llm-diff-text {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  
+  /* Dark mode support */
+  @media (prefers-color-scheme: dark) {
+    .llm-diff-button {
+      background-color: #21262d;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #c9d1d9;
+    }
+    
+    .llm-diff-button:hover {
+      background-color: #30363d;
+      border-color: rgba(240, 246, 252, 0.2);
+    }
+    
+    .llm-diff-button:active {
+      background-color: #282e33;
+      border-color: rgba(240, 246, 252, 0.3);
+    }
+  }
+  
+  /* Ensure proper spacing when inserted into GitHub's header */
+  .prc-PageHeader-Actions-ygtmj .llm-diff-button,
+  .PageHeader-actions .llm-diff-button {
+    margin-left: 8px;
+  }
+  
+  /* Animation for copy feedback */
+  .llm-diff-button .llm-diff-text {
+    transition: opacity 0.2s ease;
+  }
+  
+  .llm-diff-button:disabled .llm-diff-text {
+    opacity: 0.8;
+  }
