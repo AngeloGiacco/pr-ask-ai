@@ -72,6 +72,27 @@ class GitHubPRDiffExtractor {
   
       this.button = this.createCopyButton();
       insertionPoint.appendChild(this.button);
+      
+      // Check if we need to auto-extract after navigation
+      if (this.pendingExtraction && this.isOnFilesPage()) {
+        setTimeout(() => {
+          this.autoExtractAfterNavigation();
+        }, 1000); // Wait for page to fully load
+      }
+    }
+
+    // Auto-extract after navigating to files page
+    async autoExtractAfterNavigation() {
+      if (!this.pendingExtraction || !this.button) return;
+      
+      this.isProcessing = true;
+      this.button.querySelector('.llm-diff-text').textContent = 'Extracting...';
+      this.button.disabled = true;
+      
+      // Wait a bit more for diff tables to load
+      setTimeout(async () => {
+        await this.performExtraction();
+      }, 500);
     }
   
     // Extract PR title and number
@@ -353,72 +374,32 @@ class GitHubPRDiffExtractor {
       this.button.querySelector('.llm-diff-text').textContent = 'Copying...';
       this.button.disabled = true;
       
-      try {
-        const prInfo = this.getPRInfo();
-        const diffData = this.extractDiffData();
-        
-        if (diffData.length === 0) {
-          // If no diff data found and we're not on the files page, try to navigate there
-          if (!this.isOnFilesPage()) {
-            this.button.querySelector('.llm-diff-text').textContent = 'Going to Files...';
-            setTimeout(() => {
-              this.navigateToFiles();
-            }, 500);
-            return;
-          } else {
-            throw new Error('No diff data found. Ensure this PR has file changes.');
-          }
-        }
-        
-        const formattedDiff = this.formatDiffForLLM(prInfo, diffData);
-        
-        if (!formattedDiff || formattedDiff.trim().length < 20) {
-          throw new Error('Extracted diff appears to be empty or too short.');
-        }
-        
-        // Check clipboard API availability
-        if (!navigator.clipboard) {
-          throw new Error('Clipboard API not available. Try using HTTPS.');
-        }
-        
-        await navigator.clipboard.writeText(formattedDiff);
-        
-        console.log(`Successfully copied diff for PR #${prInfo.prNumber} (${diffData.length} files)`);
-        
-        // Show success feedback
-        this.button.querySelector('.llm-diff-text').textContent = 'Copied!';
-        setTimeout(() => {
-          if (this.button && this.button.querySelector('.llm-diff-text')) {
-            this.button.querySelector('.llm-diff-text').textContent = originalText;
-          }
-        }, 2000);
-        
-      } catch (error) {
-        console.error('Failed to copy diff:', error);
-        
-        // More specific error messages
-        let errorText = 'Error';
-        if (error.message.includes('Clipboard API')) {
-          errorText = 'No HTTPS';
-        } else if (error.message.includes('No diff data')) {
-          errorText = 'No diff';
-        } else if (error.message.includes('empty')) {
-          errorText = 'Empty';
-        }
-        
-        this.button.querySelector('.llm-diff-text').textContent = errorText;
-        setTimeout(() => {
-          if (this.button && this.button.querySelector('.llm-diff-text')) {
-            this.button.querySelector('.llm-diff-text').textContent = originalText;
-          }
-        }, 3000);
-      } finally {
-        // Only reset button state if we're not navigating away
-        if (this.button && this.button.querySelector('.llm-diff-text').textContent !== 'Going to Files...') {
+      const diffData = this.extractDiffData();
+      
+      if (diffData.length === 0) {
+        // If no diff data found and we're not on the files page, navigate there
+        if (!this.isOnFilesPage()) {
+          this.button.querySelector('.llm-diff-text').textContent = 'Going to Files...';
+          setTimeout(() => {
+            this.navigateToFiles();
+          }, 500);
+          return;
+        } else {
+          // We're on files page but still no data
+          this.button.querySelector('.llm-diff-text').textContent = 'No diff';
+          setTimeout(() => {
+            if (this.button && this.button.querySelector('.llm-diff-text')) {
+              this.button.querySelector('.llm-diff-text').textContent = originalText;
+            }
+          }, 3000);
           this.button.disabled = false;
           this.isProcessing = false;
+          return;
         }
       }
+      
+      // We have diff data, proceed with extraction
+      await this.performExtraction();
     }
   
     // Initialize the extension
