@@ -104,7 +104,87 @@ class GitHubPRDiffExtractor {
       const prNumberMatch = url.match(/\/pull\/(\d+)/);
       const prNumber = prNumberMatch ? prNumberMatch[1] : 'unknown';
       
-      return { title, prNumber };
+      // Extract repo info for API calls
+      const repoMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull/);
+      const owner = repoMatch ? repoMatch[1] : null;
+      const repo = repoMatch ? repoMatch[2] : null;
+      
+      return { title, prNumber, owner, repo };
+    }
+
+    // Extract diff data using GitHub API
+    async extractDiffDataFromAPI() {
+      const prInfo = this.getPRInfo();
+      
+      if (!prInfo.owner || !prInfo.repo || !prInfo.prNumber) {
+        throw new Error('Could not extract repository information from URL');
+      }
+      
+      try {
+        // First, get the PR files from GitHub API
+        const filesResponse = await fetch(`https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files`);
+        
+        if (!filesResponse.ok) {
+          throw new Error(`GitHub API responded with ${filesResponse.status}: ${filesResponse.statusText}`);
+        }
+        
+        const files = await filesResponse.json();
+        
+        // Convert API response to our diff format
+        const diffData = files.map(file => {
+          const changes = [];
+          
+          // Parse the patch content
+          if (file.patch) {
+            const lines = file.patch.split('\n');
+            let currentLineNumber = 0;
+            
+            for (const line of lines) {
+              if (line.startsWith('@@')) {
+                // Parse hunk header to get line numbers
+                const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
+                if (match) {
+                  currentLineNumber = parseInt(match[2]);
+                }
+                continue;
+              }
+              
+              if (line.startsWith('+')) {
+                changes.push({
+                  type: 'addition',
+                  lineNumber: currentLineNumber.toString(),
+                  content: line.substring(1)
+                });
+                currentLineNumber++;
+              } else if (line.startsWith('-')) {
+                changes.push({
+                  type: 'deletion',
+                  lineNumber: '',
+                  content: line.substring(1)
+                });
+              } else if (line.startsWith(' ')) {
+                changes.push({
+                  type: 'context',
+                  lineNumber: currentLineNumber.toString(),
+                  content: line.substring(1)
+                });
+                currentLineNumber++;
+              }
+            }
+          }
+          
+          return {
+            fileName: file.filename,
+            changes: changes
+          };
+        });
+        
+        return diffData.filter(file => file.changes.length > 0);
+        
+      } catch (error) {
+        console.error('Failed to fetch diff from GitHub API:', error);
+        throw error;
+      }
     }
   
     // Extract diff data from the page
@@ -309,10 +389,37 @@ class GitHubPRDiffExtractor {
       
       try {
         const prInfo = this.getPRInfo();
-        const diffData = this.extractDiffData();
+        let diffData = [];
+        
+        // Try API extraction first
+        try {
+          this.button.querySelector('.llm-diff-text').textContent = 'Fetching from API...';
+          diffData = await this.extractDiffDataFromAPI();
+        } catch (apiError) {
+          console.log('API extraction failed, falling back to DOM:', apiError.message);
+          // Fall back to DOM extraction
+          this.button.querySelector('.llm-diff-text').textContent = 'Extracting from page...';
+          diffData = this.extractDiffData();
+        }
         
         if (diffData.length === 0) {
-          throw new Error('No diff data found. Ensure this PR has file changes.');
+          // If both API and DOM failed, offer navigation option
+          if (!this.isOnFilesPage()) {
+            this.button.querySelector('.llm-diff-text').textContent = 'Go to Files?';
+            this.button.disabled = false;
+            this.isProcessing = false;
+            
+            // Change button behavior temporarily
+            const originalHandler = this.button.onclick;
+            this.button.onclick = () => {
+              this.button.onclick = originalHandler;
+              this.pendingExtraction = true;
+              this.navigateToFiles();
+            };
+            return;
+          } else {
+            throw new Error('No diff data found. Ensure this PR has file changes.');
+          }
         }
         
         const formattedDiff = this.formatDiffForLLM(prInfo, diffData);
@@ -371,34 +478,10 @@ class GitHubPRDiffExtractor {
       this.isProcessing = true;
 
       const originalText = this.button.querySelector('.llm-diff-text').textContent;
-      this.button.querySelector('.llm-diff-text').textContent = 'Copying...';
+      this.button.querySelector('.llm-diff-text').textContent = 'Starting...';
       this.button.disabled = true;
       
-      const diffData = this.extractDiffData();
-      
-      if (diffData.length === 0) {
-        // If no diff data found and we're not on the files page, navigate there
-        if (!this.isOnFilesPage()) {
-          this.button.querySelector('.llm-diff-text').textContent = 'Going to Files...';
-          setTimeout(() => {
-            this.navigateToFiles();
-          }, 500);
-          return;
-        } else {
-          // We're on files page but still no data
-          this.button.querySelector('.llm-diff-text').textContent = 'No diff';
-          setTimeout(() => {
-            if (this.button && this.button.querySelector('.llm-diff-text')) {
-              this.button.querySelector('.llm-diff-text').textContent = originalText;
-            }
-          }, 3000);
-          this.button.disabled = false;
-          this.isProcessing = false;
-          return;
-        }
-      }
-      
-      // We have diff data, proceed with extraction
+      // Always try the API-first approach
       await this.performExtraction();
     }
   
