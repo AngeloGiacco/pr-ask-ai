@@ -4,11 +4,10 @@ This Chrome extension adds a "LLM Diff" button to GitHub pull request pages, all
 
 ## Features
 
-- 🔍 Automatically detects GitHub PR pages
-- 📋 One-click copy of formatted diff to clipboard
-- 🎨 Seamlessly integrates with GitHub's UI
-- 🌙 Supports both light and dark themes
-- ⚡ Works on both `/pull/123` and `/pull/123/files` URLs
+- 📋 One-click copy of PR diff to clipboard
+- ⚡ Works on any GitHub PR page
+- 🔒 Works with private repositories
+- 🎨 Clean integration with GitHub's UI
 
 ## Installation
 
@@ -30,9 +29,8 @@ This Chrome extension adds a "LLM Diff" button to GitHub pull request pages, all
 ## Usage
 
 1. Navigate to any GitHub pull request page
-2. Look for the "LLM Diff" button in the top right area of the page (near Edit/Code buttons)
-3. Click the button to copy the formatted diff to your clipboard
-4. Paste the diff into your LLM conversation
+2. Click the "LLM Diff" button (appears near Edit/Code buttons)
+3. Paste the diff into your LLM conversation
 
 ## Output Format
 
@@ -51,18 +49,6 @@ PR Diff: [PR Title] (#123)
 - another removed line
 
 ```
-
-## Technical Details
-
-- **Permissions**: Only requires `activeTab` and `clipboardWrite`
-- **Content Script**: Runs only on GitHub PR pages
-- **Manifest Version**: 3 (latest Chrome extension standard)
-
-## Troubleshooting
-
-- **Button not appearing**: Make sure you're on a GitHub PR page and refresh the page
-- **No diff copied**: Ensure you're on the "Files changed" tab or that the PR has file changes
-- **Styling issues**: The extension matches GitHub's current design system but may need updates if GitHub changes their UI
 
 ## Development
 
