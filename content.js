@@ -4,6 +4,7 @@ class GitHubPRDiffExtractor {
     constructor() {
       this.button = null;
       this.isProcessing = false;
+      this.pendingExtraction = false;
     }
   
     // Check if we're on a PR page
@@ -89,70 +90,122 @@ class GitHubPRDiffExtractor {
     extractDiffData() {
       const diffData = [];
       
-      // Look for file diff containers using multiple selectors
-      const diffContainers = document.querySelectorAll('[data-diff-anchor], .file-diff, .js-file-diff-split');
+      // Look for file diff containers using updated selectors for new GitHub structure
+      const diffContainers = document.querySelectorAll('table[aria-label*="Diff for:"], table[data-diff-anchor], .file-diff, .js-file-diff-split, [data-diff-anchor]');
       
       diffContainers.forEach(container => {
-        // Try multiple selectors for file name
-        const fileHeader = container.querySelector(
-          '.DiffFileHeader-module__file-name--mY1O5, .file-header, [data-path], .file-info a'
-        );
-        if (!fileHeader) return;
+        let fileName = '';
         
-        const fileName = fileHeader.getAttribute('data-path') || fileHeader.textContent.trim();
+        // Extract file name from table aria-label (new GitHub structure)
+        if (container.tagName === 'TABLE' && container.getAttribute('aria-label')) {
+          const ariaLabel = container.getAttribute('aria-label');
+          const match = ariaLabel.match(/Diff for: (.+)/);
+          if (match) {
+            fileName = match[1];
+          }
+        }
+        
+        // Fallback to older selectors if aria-label method didn't work
+        if (!fileName) {
+          const fileHeader = container.querySelector(
+            '.DiffFileHeader-module__file-name--mY1O5, .file-header, [data-path], .file-info a'
+          );
+          if (fileHeader) {
+            fileName = fileHeader.getAttribute('data-path') || fileHeader.textContent.trim();
+          }
+        }
+        
+        if (!fileName) return;
+        
         const diffLines = [];
         
-        // Extract diff lines using multiple approaches
-        const diffRows = container.querySelectorAll('tr[data-hunk], tr.js-diff-row, tr[class*="diff"]');
+        // Extract diff lines using updated selectors for new GitHub structure
+        const diffRows = container.querySelectorAll('tr.diff-line-row, tr[data-hunk], tr.js-diff-row, tr[class*="diff"]');
         
         diffRows.forEach(row => {
-          // Handle both split and unified diff views
-          const additionCell = row.querySelector('td.blob-code-addition, td[data-line-type="addition"]');
-          const deletionCell = row.querySelector('td.blob-code-deletion, td[data-line-type="deletion"]');
+          // Skip hunk header rows
+          if (row.querySelector('td.diff-hunk-cell, td.hunk')) {
+            return;
+          }
+          
+          // look for cells with specific background colors and classes
+          const additionCell = row.querySelector('td[style*="diffBlob-addition"], .addition, td.blob-code-addition, td[data-line-type="addition"]');
+          const deletionCell = row.querySelector('td[style*="diffBlob-deletion"], .deletion, td.blob-code-deletion, td[data-line-type="deletion"]');
           const contextCell = row.querySelector('td.blob-code-context, td[data-line-type="context"]');
           
-          if (additionCell) {
-            const lineNumber = row.querySelector('td[data-line-number]')?.textContent?.trim();
+          // check for diff markers and background colors
+          const cells = row.querySelectorAll('td');
+          let lineType = 'context';
+          let content = '';
+          let lineNumber = '';
+          
+          // Look for addition markers
+          if (additionCell || row.querySelector('span.diff-text-marker')) {
+            const marker = row.querySelector('span.diff-text-marker');
+            if (marker && marker.textContent === '+') {
+              lineType = 'addition';
+            }
+          }
+          
+          // Look for deletion markers  
+          if (deletionCell || (row.querySelector('span.diff-text-marker') && row.querySelector('span.diff-text-marker').textContent === '-')) {
+            lineType = 'deletion';
+          }
+          
+          // Extract content from the rightmost content cell
+          for (let i = cells.length - 1; i >= 0; i--) {
+            const cell = cells[i];
+            if (cell.classList.contains('diff-text-cell') || cell.querySelector('.diff-text-inner')) {
+              const innerDiv = cell.querySelector('.diff-text-inner');
+              if (innerDiv) {
+                content = innerDiv.textContent.trim();
+                // Remove the diff marker if it's at the start
+                if (content.startsWith('+') || content.startsWith('-')) {
+                  content = content.substring(1).trim();
+                }
+                break;
+              } else if (cell.textContent.trim()) {
+                content = cell.textContent.trim();
+                break;
+              }
+            }
+          }
+          
+          // Extract line number from leftmost cells
+          for (let i = 0; i < Math.min(2, cells.length); i++) {
+            const cell = cells[i];
+            if (cell.classList.contains('diff-line-number') && cell.textContent.trim() && /^\d+$/.test(cell.textContent.trim())) {
+              lineNumber = cell.textContent.trim();
+              break;
+            }
+          }
+          
+          // Add the line if we found content
+          if (content) {
             diffLines.push({
-              type: 'addition',
+              type: lineType,
               lineNumber: lineNumber || '',
-              content: additionCell.textContent.trim()
-            });
-          } else if (deletionCell) {
-            const lineNumber = row.querySelector('td[data-line-number]')?.textContent?.trim();
-            diffLines.push({
-              type: 'deletion',
-              lineNumber: lineNumber || '',
-              content: deletionCell.textContent.trim()
-            });
-          } else if (contextCell) {
-            const lineNumber = row.querySelector('td[data-line-number]')?.textContent?.trim();
-            diffLines.push({
-              type: 'context',
-              lineNumber: lineNumber || '',
-              content: contextCell.textContent.trim()
+              content: content
             });
           }
           
-          // Fallback: try the old approach for backward compatibility
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 4 && diffLines.length === 0) {
+          if (!content && cells.length >= 4) {
             const leftContent = cells[1]?.textContent?.trim() || '';
             const rightContent = cells[3]?.textContent?.trim() || '';
             
-            let lineType = 'context';
+            let fallbackType = 'context';
             if (row.classList.contains('addition') || row.querySelector('.addition')) {
-              lineType = 'addition';
+              fallbackType = 'addition';
             } else if (row.classList.contains('deletion') || row.querySelector('.deletion')) {
-              lineType = 'deletion';
+              fallbackType = 'deletion';
             }
             
-            const content = rightContent || leftContent;
-            if (content) {
+            const fallbackContent = rightContent || leftContent;
+            if (fallbackContent) {
               diffLines.push({
-                type: lineType,
+                type: fallbackType,
                 lineNumber: cells[0]?.textContent?.trim() || cells[2]?.textContent?.trim() || '',
-                content: content
+                content: fallbackContent
               });
             }
           }
@@ -216,21 +269,29 @@ class GitHubPRDiffExtractor {
       return null;
     }
   
-    // Handle copy button click
-    async handleCopyClick() {
-      if (this.isProcessing) return;
-      
-      this.isProcessing = true;
+    // Check if we're on the files page
+    isOnFilesPage() {
+      return window.location.href.includes('/files');
+    }
+
+    // Navigate to the files page
+    navigateToFiles() {
+      this.pendingExtraction = true;
+      const url = window.location.href;
+      const filesUrl = url.replace(/\/pull\/(\d+).*/, '/pull/$1/files');
+      window.location.href = filesUrl;
+    }
+
+    // Perform the actual extraction and copy
+    async performExtraction() {
       const originalText = this.button.querySelector('.llm-diff-text').textContent;
-      this.button.querySelector('.llm-diff-text').textContent = 'Copying...';
-      this.button.disabled = true;
       
       try {
         const prInfo = this.getPRInfo();
         const diffData = this.extractDiffData();
         
         if (diffData.length === 0) {
-          throw new Error('No diff data found. Try navigating to the "Files changed" tab or ensure this PR has file changes.');
+          throw new Error('No diff data found. Ensure this PR has file changes.');
         }
         
         const formattedDiff = this.formatDiffForLLM(prInfo, diffData);
@@ -278,6 +339,85 @@ class GitHubPRDiffExtractor {
       } finally {
         this.button.disabled = false;
         this.isProcessing = false;
+        this.pendingExtraction = false;
+      }
+    }
+
+    // Handle copy button click
+    async handleCopyClick() {
+      if (this.isProcessing) return;
+      
+      this.isProcessing = true;
+
+      const originalText = this.button.querySelector('.llm-diff-text').textContent;
+      this.button.querySelector('.llm-diff-text').textContent = 'Copying...';
+      this.button.disabled = true;
+      
+      try {
+        const prInfo = this.getPRInfo();
+        const diffData = this.extractDiffData();
+        
+        if (diffData.length === 0) {
+          // If no diff data found and we're not on the files page, try to navigate there
+          if (!this.isOnFilesPage()) {
+            this.button.querySelector('.llm-diff-text').textContent = 'Going to Files...';
+            setTimeout(() => {
+              this.navigateToFiles();
+            }, 500);
+            return;
+          } else {
+            throw new Error('No diff data found. Ensure this PR has file changes.');
+          }
+        }
+        
+        const formattedDiff = this.formatDiffForLLM(prInfo, diffData);
+        
+        if (!formattedDiff || formattedDiff.trim().length < 20) {
+          throw new Error('Extracted diff appears to be empty or too short.');
+        }
+        
+        // Check clipboard API availability
+        if (!navigator.clipboard) {
+          throw new Error('Clipboard API not available. Try using HTTPS.');
+        }
+        
+        await navigator.clipboard.writeText(formattedDiff);
+        
+        console.log(`Successfully copied diff for PR #${prInfo.prNumber} (${diffData.length} files)`);
+        
+        // Show success feedback
+        this.button.querySelector('.llm-diff-text').textContent = 'Copied!';
+        setTimeout(() => {
+          if (this.button && this.button.querySelector('.llm-diff-text')) {
+            this.button.querySelector('.llm-diff-text').textContent = originalText;
+          }
+        }, 2000);
+        
+      } catch (error) {
+        console.error('Failed to copy diff:', error);
+        
+        // More specific error messages
+        let errorText = 'Error';
+        if (error.message.includes('Clipboard API')) {
+          errorText = 'No HTTPS';
+        } else if (error.message.includes('No diff data')) {
+          errorText = 'No diff';
+        } else if (error.message.includes('empty')) {
+          errorText = 'Empty';
+        }
+        
+        this.button.querySelector('.llm-diff-text').textContent = errorText;
+        setTimeout(() => {
+          if (this.button && this.button.querySelector('.llm-diff-text')) {
+            this.button.querySelector('.llm-diff-text').textContent = originalText;
+          }
+        }, 3000);
+      } finally {
+        // Only reset button state if we're not navigating away
+        if (this.button && this.button.querySelector('.llm-diff-text').textContent !== 'Going to Files...') {
+          this.button.disabled = false;
+          this.isProcessing = false;
+        }
       }
     }
   
@@ -303,6 +443,15 @@ class GitHubPRDiffExtractor {
       });
       
       observer.observe(document.body, { childList: true, subtree: true });
+      
+      // Listen for popstate events (back/forward navigation)
+      window.addEventListener('popstate', () => {
+        setTimeout(() => {
+          if (this.isPRPage() && !this.button) {
+            this.insertButton();
+          }
+        }, 500);
+      });
     }
   }
   
