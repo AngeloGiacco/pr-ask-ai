@@ -19,12 +19,8 @@ This Chrome extension adds a "LLM Diff" button to GitHub pull request pages, all
 4. Click "Load unpacked" and select the folder containing the extension files
 5. The extension should now be active on GitHub PR pages
 
-### Option 2: Manual Installation
+![Demo of LLM Diff Chrome Extension in action](/pr-ask-ai.gif)
 
-1. Download all the files (`manifest.json`, `content.js`, `styles.css`)
-2. Create a folder for the extension
-3. Add some basic icons (16x16, 48x48, 128x128 PNG files named `icon16.png`, `icon48.png`, `icon128.png`)
-4. Follow steps 2-5 from Option 1
 
 ## Usage
 
