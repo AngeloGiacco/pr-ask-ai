@@ -1,5 +1,7 @@
 # GitHub PR Diff for LLM Chrome Extension
 
+![Demo of LLM Diff Chrome Extension in action](/pr-ask-ai.gif)
+
 This Chrome extension adds a "LLM Diff" button to GitHub pull request pages, allowing you to quickly copy the PR diff in a format optimized for Large Language Models.
 
 ## Features
@@ -18,8 +20,6 @@ This Chrome extension adds a "LLM Diff" button to GitHub pull request pages, all
 3. Enable "Developer mode" in the top right
 4. Click "Load unpacked" and select the folder containing the extension files
 5. The extension should now be active on GitHub PR pages
-
-![Demo of LLM Diff Chrome Extension in action](/pr-ask-ai.gif)
 
 
 ## Usage
